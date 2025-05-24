@@ -1,1 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Catch the Falling Stars - Vibrant</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(270deg, #ff9a9e, #fad0c4, #a1c4fd, #c2e9fb, #ff9a9e);
+            background-size: 800% 800%;
+            animation: gradientShift 20s ease infinite;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: transparent;
+        }
+    </style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<audio id="bgMusic" src="mixkit-a-very-happy-christmas-897.mp3" loop></audio>
 
+<script>
+(() => {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+
+    window.addEventListener('resize', () => {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+        basket.y = height - 50;
+    });
+
+    let basket = { x: width / 2 - 40, y: height - 50, width: 80, height: 20, speed: 10 };
+    let stars = [];
+    let particles = [];
+    let score = 0;
+    let highScore = 0;
+    let timeLeft = 60;
+    let starSpeed = 2;
+    let keys = {};
+
+    const music = document.getElementById('bgMusic');
+
+    // Play music only after user interaction (due to browser autoplay restrictions)
+    function startMusic() {
+        if (music.paused) {
+            music.play().catch(e => {
+                console.log('Audio play failed:', e);
+            });
+        }
+        window.removeEventListener('click', startMusic);
+        window.removeEventListener('keydown', startMusic);
+    }
+    window.addEventListener('click', startMusic);
+    window.addEventListener('keydown', startMusic);
+
+    window.addEventListener('keydown', e => keys[e.key] = true);
+    window.addEventListener('keyup', e => keys[e.key] = false);
+
+    canvas.addEventListener('touchstart', e => {
+        const touchX = e.touches[0].clientX;
+        if (touchX < width / 2) {
+            keys['ArrowLeft'] = true;
+            keys['ArrowRight'] = false;
+        } else {
+            keys['ArrowRight'] = true;
+            keys['ArrowLeft'] = false;
+        }
+    });
+
+    canvas.addEventListener('touchend', () => {
+        keys['ArrowLeft'] = false;
+        keys['ArrowRight'] = false;
+    });
+
+    function drawStar(x, y, radius, points, inset, color) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.translate(x, y);
+        ctx.moveTo(0, 0 - radius);
+        for (let i = 0; i < points; i++) {
+            ctx.rotate(Math.PI / points);
+            ctx.lineTo(0, 0 - (radius * inset));
+            ctx.rotate(Math.PI / points);
+            ctx.lineTo(0, 0 - radius);
+        }
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.shadowColor = 'rgba(255, 255, 0, 0.8)';
+        ctx.shadowBlur = 15;
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function spawnStar() {
+        stars.push({
+            x: Math.random() * (width - 20) + 10,
+            y: -20,
+            radius: 12,
+            type: Math.random() < 0.1 ? 'power' : 'normal' // 10% chance power-up
+        });
+    }
+
+    function createParticles(x, y, color) {
+        for (let i = 0; i < 15; i++) {
+            particles.push({
+                x: x,
+                y: y,
+                dx: (Math.random() - 0.5) * 4,
+                dy: (Math.random() - 0.5) * 4,
+                life: 30,
+                color: color
+            });
+        }
+    }
+
+    function updateParticles() {
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.dx;
+            p.y += p.dy;
+            p.life--;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+    }
+
+    function vibrate(duration = 100) {
+        if (navigator.vibrate) {
+            navigator.vibrate(duration);
+        }
+    }
+
+    function update() {
+        if (keys['ArrowLeft']) basket.x -= basket.speed;
+        if (keys['ArrowRight']) basket.x += basket.speed;
+        basket.x = Math.max(0, Math.min(width - basket.width, basket.x));
+
+        stars.forEach(star => star.y += starSpeed);
+
+        for (let i = stars.length - 1; i >= 0; i--) {
+            let star = stars[i];
+            if (
+                star.y + star.radius > basket.y &&
+                star.x > basket.x &&
+                star.x < basket.x + basket.width
+            ) {
+                if (star.type === 'power') {
+                    starSpeed = Math.max(1, starSpeed - 1); // slow down stars temporarily
+                }
+                score++;
+                createParticles(star.x, star.y, star.type === 'power' ? 'cyan' : 'yellow');
+                vibrate(100); // vibrate on mobile catch
+                stars.splice(i, 1);
+            } else if (star.y > height + 20) {
+                stars.splice(i, 1);
+            }
+        }
+
+        updateParticles();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, width, height);
+
+        // Draw basket
+        ctx.fillStyle = '#8B4513';
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 8;
+        ctx.fillRect(basket.x, basket.y, basket.width, basket.height);
+
+        // Draw stars
+        stars.forEach(star => {
+            if (star.type === 'power') {
+                drawStar(star.x, star.y, star.radius, 5, 0.5, 'cyan');
+            } else {
+                drawStar(star.x, star.y, star.radius, 5, 0.5, 'yellow');
+            }
+        });
+
+        // Draw particles
+        particles.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life / 30;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        });
+
+        // Draw UI
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'white';
+        ctx.font = '22px Segoe UI';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Score: ${score}`, 20, 30);
+        ctx.textAlign = 'center';
+        ctx.fillText(`Time: ${timeLeft}s`, width / 2, 30);
+        ctx.textAlign = 'right';
+        ctx.fillText(`High Score: ${highScore}`, width - 20, 30);
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+    }
+
+    function startTimer() {
+        let timer = setInterval(() => {
+            timeLeft--;
+            if (timeLeft % 15 === 0) starSpeed += 1;
+            if (timeLeft <= 0) {
+                clearInterval(timer);
+                endGame();
+            }
+        }, 1000);
+    }
+
+    function endGame() {
+        if (score > highScore) highScore = score;
+        setTimeout(() => {
+            if (confirm(`⏰ Time's up!\nYou scored ${score} points.\nPlay again?`)) {
+                resetGame();
+            }
+        }, 100);
+    }
+
+    function resetGame() {
+        score = 0;
+        timeLeft = 60;
+        starSpeed = 2;
+        stars = [];
+        particles = [];
+        basket.x = width / 2 - basket.width / 2;
+        startTimer();
+    }
+
+    setInterval(spawnStar, 600);
+    function loop() {
+        gameLoop();
+        requestAnimationFrame(loop);
+    }
+
+    resetGame();
+    loop();
+})();
+</script>
+</body>
+</html>
